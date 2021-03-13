@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 import argparse
 from tqdm import tqdm
+from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -17,8 +18,10 @@ from model import WordCNN
 
 
 def trainer(train_loader, dev_loader, model, optimizer, criterion, epoch=1000, early_stop=3, scheduler=None):
-
+    early_stop_counter = early_stop
     best_acc = 0
+    best_model = deepcopy(model)
+
     for e in range(epoch):
         loss_log = []
         model.train()
@@ -40,28 +43,33 @@ def trainer(train_loader, dev_loader, model, optimizer, criterion, epoch=1000, e
             logit = model(X)
             logits.append(logit.data.cpu().numpy())
             ys.append(y.data.cpu().numpy())
+
         logits = np.concatenate(logits, axis=0)
         preds = np.argmax(logits, axis=1)
         ys = np.concatenate(ys, axis=0)
         acc = accuracy_score(y_true=ys, y_pred=preds)
         label_names = ['rating 0', 'rating 1', 'rating 2']
         report = classification_report(ys, preds, digits=3, target_names=label_names)
+
         if acc > best_acc:
             best_acc = acc
+            best_model = deepcopy(model)
+            early_stop_counter = early_stop
         else:
-            early_stop -= 1
+            early_stop_counter -= 1
+
         print("current validation report")
         print("\n{}\n".format(report))
         print()
         print("epcoh: {}, current accuracy:{}, best accuracy:{}".format(e + 1, acc, best_acc))
 
-        if early_stop == 0:
+        if early_stop_counter == 0:
             break
 
         if scheduler is not None:
             scheduler.step()
 
-    return model, best_acc
+    return best_model, best_acc
 
 def predict(model, test_loader, save_file="submission.csv"):
     logits = []
